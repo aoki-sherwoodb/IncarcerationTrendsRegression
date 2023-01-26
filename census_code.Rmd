@@ -1,0 +1,79 @@
+---
+title: "Collecting Census Data"
+author: "CKelling"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We will start by loading the tidycensus library, which has functions that will allow us to download Census data.
+```{r, message = FALSE}
+# library for downloading Census variables
+library(tidycensus)
+
+#for formatting data
+library(tidyverse)
+library(maditr)
+```
+
+Next, you will need to sign up for a Census API key. Please read the terms of service! For the organization, you can put Carleton College. Also be sure to never share this key- it is a unique identifier to you! You can paste it below, run the function, and then delete if from your code.
+
+To sign up for a Census API key go to the following website: \url{https://api.census.gov/data/key_signup.html}.
+
+
+After you sign up, we will install your census API key into your R environment. You can run this once and then delete your API key and comment the rest of the code out.
+```{r}
+#census_api_key("", install = TRUE)
+
+#check to make sure your census key is there:
+#Sys.getenv("CENSUS_API_KEY")
+```
+
+Now, you should choose the list of variables that you want to download. I will include two variables here, so you can see how this works. The full list of variables is included here: \url{https://api.census.gov/data/2017/acs/acs5/variables.html}. 
+
+You should copy the code for the variable into the following function.
+
+Below, I've included information on how to get county-level Census data for two variables from Ohio for the year 2018 (the most recent ACS to this date- the dates will be included in the output). The "E" indicates that these are the point estimates (not uncertainty estimates).
+```{r}
+#download ACS (Census) data
+oh_census <- get_acs(geography = "county", 
+                       variables = c("B19001_001E", 
+                                     "B01003_001E"), 
+                     year = 2018,
+                     state = "OH",
+                     geometry = F)
+```
+
+
+Now, we need to create a codebook for the data so we can keep track of the variable names- the Census codes don't tell us anything! We will join it to the census data and then make it into a format where rows are counties and columns are census variables.
+```{r}
+#creating a codebook for you to  track of the variables.
+code_book <- rbind(c("B19001_001", "household_income"),
+                   c("B01003_001", "total_pop_acs"))
+
+#join to the Census data
+code_book <- as.data.frame(code_book)
+colnames(code_book) <- c("variable", "var_name")
+oh_census <- left_join(oh_census, code_book)
+
+#format the data so there is a row for each census tract and column for every variable
+ohio_acs_data <- maditr::dcast(oh_census, NAME ~ var_name, 
+                               value.var = "estimate", 
+                               fun.aggregate = NULL)
+
+#take a look at the dataset
+head(ohio_acs_data)
+```
+
+Next, you could join the Ohio ACS data that we just created with your incarceration dataset. Take a look at the coding tips on the assignment pdf!
+
+```{r}
+incarc_data <- read.csv("https://github.com/vera-institute/incarceration-trends/raw/master/incarceration_trends.csv")
+tx_incarc <- incarc_data %>%
+  filter(state == "TX")
+```
+

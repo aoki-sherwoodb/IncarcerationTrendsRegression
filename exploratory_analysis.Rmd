@@ -1,0 +1,26 @@
+---
+title: "Incarceration Exploratory Analysis"
+author: "Ben Aoki-Sherwood"
+date: "2023-01-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE}
+# library for downloading Census variables
+library(tidycensus)
+
+#for formatting data
+library(tidyverse)
+library(maditr)
+```
+
+```{r}
+incarc_data <- read.csv("https://github.com/vera-institute/incarceration-trends/raw/master/incarceration_trends.csv")
+tx_incarc <- incarc_data %>%
+  filter(state == "TX")
+```
+
