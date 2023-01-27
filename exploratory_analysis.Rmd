@@ -19,8 +19,61 @@ library(maditr)
 ```
 
 ```{r}
+# load incarceration data
 incarc_data <- read.csv("https://github.com/vera-institute/incarceration-trends/raw/master/incarceration_trends.csv")
+incarc_cols <- c("county_name", "total_jail_pop_rate", "aapi_jail_pop_rate", "black_jail_pop_rate", "latinx_jail_pop_rate", "native_jail_pop_rate", "white_jail_pop_rate")
+
+# filter incarceration data to include only TX, 2018 and prepare column names for joining
 tx_incarc <- incarc_data %>%
-  filter(state == "TX")
+  filter(state == "TX" & year == 2018) %>%
+  mutate(county_name = paste(county_name, ", Texas", sep = "")) %>%
+  select(incarc_cols)
+```
+
+## Questions/Notes:
+
+- Do we want median HOUSEHOLD (B19013) or median FAMILY (B19113) incomes?
+- Per capita income is B19301
+- Gini Index (inequality) is B19083
+
+```{r}
+# download ACS census data for Texas from 2018, choose relevant columns on median household income
+variables <- c("B19083_001E", "B19013_001E", "B19013A_001E", "B19013B_001E", "B19013C_001E",
+               "B19013D_001E", "B19013E_001E", "B19013F_001E", "B19013G_001E", "B19013H_001E",
+               "B19013I_001E")
+
+tx_census <- get_acs(geography = "county", 
+                     variables = variables, 
+                     year = 2018,
+                     state = "TX",
+                     geometry = F)
+
+code_book <- rbind(c("B19083_001", "gini_index"),
+                   c("B19013_001", "household_income_all"),
+                   c("B19013A_001", "household_income_white"),
+                   c("B19013B_001", "household_income_black"),
+                   c("B19013C_001", "household_income_native"),
+                   c("B19013D_001", "household_income_asian"),
+                   c("B19013E_001", "household_income_nhpi"),
+                   c("B19013F_001", "household_income_other"),
+                   c("B19013G_001", "household_income_two_races"),
+                   c("B19013H_001", "household_income_white_not_hispanic"),
+                   c("B19013I_001", "household_income_hispanic"))
+
+#join to the Census data
+code_book <- as.data.frame(code_book)
+colnames(code_book) <- c("variable", "var_name")
+tx_census <- left_join(tx_census, code_book)
+
+#format the data so there is a row for each census tract and column for every variable
+tx_acs_data <- maditr::dcast(tx_census, NAME ~ var_name, 
+                               value.var = "estimate", 
+                               fun.aggregate = NULL) %>%
+  rename("county_name" = "NAME")
+```
+
+```{r}
+# join incarceration and census data
+joined_data <- left_join(tx_acs_data, tx_incarc, by = "county_name")
 ```
 
