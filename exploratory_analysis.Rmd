@@ -21,9 +21,12 @@ library(maditr)
 ```{r}
 # load incarceration data
 incarc_data <- read.csv("https://github.com/vera-institute/incarceration-trends/raw/master/incarceration_trends.csv")
-incarc_cols <- c("county_name", "total_jail_pop_rate", "aapi_jail_pop_rate", "black_jail_pop_rate", "latinx_jail_pop_rate", "native_jail_pop_rate", "white_jail_pop_rate")
+incarc_cols <- c("county_name", "total_jail_pop_rate", "aapi_jail_pop_rate", 
+                 "black_jail_pop_rate", "latinx_jail_pop_rate", 
+                 "native_jail_pop_rate", "white_jail_pop_rate")
 
-# filter incarceration data to include only TX, 2018 and prepare column names for joining
+# filter incarceration data to include only TX, 2018
+# prepare county_name field as key for joining
 tx_incarc <- incarc_data %>%
   filter(state == "TX" & year == 2018) %>%
   mutate(county_name = paste(county_name, ", Texas", sep = "")) %>%
@@ -37,10 +40,12 @@ tx_incarc <- incarc_data %>%
 - Gini Index (inequality) is B19083
 
 ```{r}
-# download ACS census data for Texas from 2018, choose relevant columns on median household income
-variables <- c("B19083_001E", "B19013_001E", "B19013A_001E", "B19013B_001E", "B19013C_001E",
-               "B19013D_001E", "B19013E_001E", "B19013F_001E", "B19013G_001E", "B19013H_001E",
-               "B19013I_001E")
+# download ACS census data for Texas from 2018
+
+# choose variables on Gini index (income inequality) and median household income by race
+variables <- c("B19083_001E", "B19013_001E", "B19013A_001E", "B19013B_001E", 
+               "B19013C_001E", "B19013D_001E", "B19013E_001E", "B19013F_001E", 
+               "B19013G_001E", "B19013H_001E", "B19013I_001E")
 
 tx_census <- get_acs(geography = "county", 
                      variables = variables, 
@@ -73,7 +78,38 @@ tx_acs_data <- maditr::dcast(tx_census, NAME ~ var_name,
 ```
 
 ```{r}
-# join incarceration and census data
-joined_data <- left_join(tx_acs_data, tx_incarc, by = "county_name")
+# pivot data so we have (county, race) observations
+# acs data:
+
+long_acs <- tx_acs_data %>%
+  select(-c("household_income_white", "household_income_other", 
+            "household_income_two_races", "household_income_nhpi")) %>%
+  pivot_longer(cols = c("household_income_all", "household_income_white_not_hispanic", 
+                        "household_income_black",  "household_income_native", 
+                        "household_income_asian", "household_income_hispanic"), 
+               names_to = "race", 
+               values_to = "median_household_income", 
+               names_prefix = "household_income_") %>%
+  mutate(race = str_replace(race, "_not_hispanic", ""), 
+         race = str_replace(race, "hispanic", "latinx"))
+
+# incarceration data:
+
+long_incarc <- tx_incarc %>%
+  pivot_longer(cols = c("total_jail_pop_rate", "aapi_jail_pop_rate", 
+                        "black_jail_pop_rate", "latinx_jail_pop_rate", 
+                        "native_jail_pop_rate", "white_jail_pop_rate"),
+               names_to = "race",
+               values_to = "jail_pop_rate") %>%
+  mutate(race = str_replace(race, "_jail_pop_rate", ""),
+         race = str_replace(race, "aapi", "asian"),
+         race = str_replace(race, "total", "all"))
+```
+
+```{r}
+# join incarceration and census data, set 0s in incarceration data to NAs and remove NAs
+joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race")) %>%
+  mutate(jail_pop_rate = ifelse(jail_pop_rate == 0.0, NA, jail_pop_rate)) %>%
+  drop_na()
 ```
 
