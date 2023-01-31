@@ -16,14 +16,20 @@ library(tidycensus)
 #for formatting data
 library(tidyverse)
 library(maditr)
+library(patchwork)
 ```
+
+# Load and clean data
 
 ```{r}
 # load incarceration data
 incarc_data <- read.csv("https://github.com/vera-institute/incarceration-trends/raw/master/incarceration_trends.csv")
 incarc_cols <- c("county_name", "total_jail_pop_rate", "aapi_jail_pop_rate", 
                  "black_jail_pop_rate", "latinx_jail_pop_rate", 
-                 "native_jail_pop_rate", "white_jail_pop_rate")
+                 "native_jail_pop_rate", "white_jail_pop_rate",
+                 "total_pop_15to64", "aapi_pop_15to64", "black_pop_15to64",
+                 "latinx_pop_15to64", "native_pop_15to64", "white_pop_15to64",
+                 "urbanicity")
 
 # filter incarceration data to include only TX, 2018
 # prepare county_name field as key for joining
@@ -96,20 +102,75 @@ long_acs <- tx_acs_data %>%
 # incarceration data:
 
 long_incarc <- tx_incarc %>%
-  pivot_longer(cols = c("total_jail_pop_rate", "aapi_jail_pop_rate", 
-                        "black_jail_pop_rate", "latinx_jail_pop_rate", 
-                        "native_jail_pop_rate", "white_jail_pop_rate"),
-               names_to = "race",
-               values_to = "jail_pop_rate") %>%
-  mutate(race = str_replace(race, "_jail_pop_rate", ""),
-         race = str_replace(race, "aapi", "asian"),
+  rename_with(function (x) {str_replace(x, "_jail", ".jail")}) %>%
+  rename_with(function (x) {str_replace(x, "_pop_15", ".pop_15")}) %>%
+  pivot_longer(cols = c("total.jail_pop_rate", "aapi.jail_pop_rate", 
+                        "black.jail_pop_rate", "latinx.jail_pop_rate", 
+                        "native.jail_pop_rate", "white.jail_pop_rate",
+                        "total.pop_15to64", "aapi.pop_15to64", "black.pop_15to64",
+                        "latinx.pop_15to64", "native.pop_15to64", "white.pop_15to64"),
+               names_to = c("race", ".value"), names_sep = "\\.") %>%
+  mutate(race = str_replace(race, "aapi", "asian"),
          race = str_replace(race, "total", "all"))
 ```
 
 ```{r}
 # join incarceration and census data, set 0s in incarceration data to NAs and remove NAs
-joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race")) %>%
+joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race"))
+
+# outlier in median household income is >1 order of magnitude smaller than all other points:
+joined_data <- filter(joined_data, county_name != "Erath County, Texas" | race != "black")
+joined_data_no_na <- joined_data %>% 
   mutate(jail_pop_rate = ifelse(jail_pop_rate == 0.0, NA, jail_pop_rate)) %>%
   drop_na()
+```
+
+# EDA
+
+### controls
+
+```{r}
+# check relationship of controls (population, urbanicity) with jail rate
+pop <- joined_data_no_na %>% ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate))) + geom_point()
+urb <- joined_data_no_na %>% ggplot(aes(x = urbanicity, y = log(jail_pop_rate))) + geom_boxplot()
+gini <- joined_data_no_na %>% ggplot(aes(x = gini_index, y = log(jail_pop_rate))) + geom_point()
+inc <- joined_data_no_na %>% ggplot(aes(x = log(median_household_income), y = log(jail_pop_rate))) + geom_point()
+(pop + urb) / (gini + inc)
+```
+
+```{r}
+# check relationship of controls (population, urbanicity) with jail rate
+pop <- joined_data %>% ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate))) + geom_point()
+urb <- joined_data %>% ggplot(aes(x = urbanicity, y = log(jail_pop_rate))) + geom_boxplot()
+gini <- joined_data %>% ggplot(aes(x = gini_index, y = log(jail_pop_rate))) + geom_point()
+inc <- joined_data %>% ggplot(aes(x = log(median_household_income), y = log(jail_pop_rate))) + geom_point()
+(pop + urb) / (gini + inc)
+```
+
+```{r}
+joined_data %>%
+  filter(race == "all") %>%
+  ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate))) +
+    geom_point()
+```
+
+
+### race and race*income
+
+```{r}
+# clear discrepancies between jail pop rates 
+joined_data %>% 
+  ggplot(aes(x = race, y = log1p(jail_pop_rate))) +
+  geom_boxplot() +
+  facet_grid(cols = vars(urbanicity))
+```
+
+
+```{r}
+# see if effect of household_income differs by race
+joined_data_no_na %>% 
+  ggplot(aes(x = median_household_income, y = log(jail_pop_rate), color = race)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = F)
 ```
 
