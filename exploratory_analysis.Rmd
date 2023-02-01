@@ -17,6 +17,8 @@ library(tidycensus)
 library(tidyverse)
 library(maditr)
 library(patchwork)
+library(broom)
+library(ggResidpanel)
 ```
 
 # Load and clean data
@@ -104,6 +106,9 @@ long_acs <- tx_acs_data %>%
 long_incarc <- tx_incarc %>%
   rename_with(function (x) {str_replace(x, "_jail", ".jail")}) %>%
   rename_with(function (x) {str_replace(x, "_pop_15", ".pop_15")}) %>%
+  filter(!(total.jail_pop_rate != 0.0 & aapi.jail_pop_rate == 0.0 & 
+             black.jail_pop_rate == 0.0 & latinx.jail_pop_rate == 0.0 & 
+             native.jail_pop_rate == 0.0 & white.jail_pop_rate == 0.0)) %>%
   pivot_longer(cols = c("total.jail_pop_rate", "aapi.jail_pop_rate", 
                         "black.jail_pop_rate", "latinx.jail_pop_rate", 
                         "native.jail_pop_rate", "white.jail_pop_rate",
@@ -116,13 +121,12 @@ long_incarc <- tx_incarc %>%
 
 ```{r}
 # join incarceration and census data, set 0s in incarceration data to NAs and remove NAs
-joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race"))
-
-# outlier in median household income is >1 order of magnitude smaller than all other points:
-joined_data <- filter(joined_data, county_name != "Erath County, Texas" | race != "black")
-joined_data_no_na <- joined_data %>% 
-  mutate(jail_pop_rate = ifelse(jail_pop_rate == 0.0, NA, jail_pop_rate)) %>%
+joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race")) %>%
   drop_na()
+
+# outlier in median household income is >1 order of magnitude smaller than all other points
+# suspected data entry error
+joined_data <- filter(joined_data, county_name != "Erath County, Texas" | race != "black")
 ```
 
 # EDA
@@ -130,16 +134,7 @@ joined_data_no_na <- joined_data %>%
 ### controls
 
 ```{r}
-# check relationship of controls (population, urbanicity) with jail rate
-pop <- joined_data_no_na %>% ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate))) + geom_point()
-urb <- joined_data_no_na %>% ggplot(aes(x = urbanicity, y = log(jail_pop_rate))) + geom_boxplot()
-gini <- joined_data_no_na %>% ggplot(aes(x = gini_index, y = log(jail_pop_rate))) + geom_point()
-inc <- joined_data_no_na %>% ggplot(aes(x = log(median_household_income), y = log(jail_pop_rate))) + geom_point()
-(pop + urb) / (gini + inc)
-```
-
-```{r}
-# check relationship of controls (population, urbanicity) with jail rate
+# check relationship of controls (population, urbanicity) with jail rate (including 0s!)
 pop <- joined_data %>% ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate))) + geom_point()
 urb <- joined_data %>% ggplot(aes(x = urbanicity, y = log(jail_pop_rate))) + geom_boxplot()
 gini <- joined_data %>% ggplot(aes(x = gini_index, y = log(jail_pop_rate))) + geom_point()
@@ -169,8 +164,15 @@ joined_data %>%
 ```{r}
 # see if effect of household_income differs by race
 joined_data_no_na %>% 
-  ggplot(aes(x = median_household_income, y = log(jail_pop_rate), color = race)) +
+  ggplot(aes(x = log(pop_15to64), y = log(jail_pop_rate), color = race)) +
     geom_point() +
     geom_smooth(method = "lm", se = F)
+```
+
+# fit model
+
+```{r}
+null_model <- lm(log1p(jail_pop_rate) ~ log(pop_15to64) + urbanicity + median_household_income)
+full_model <- lm(log1p(jail_pop_rate) ~ log(pop_15to64)*race + urbanicity + log(median_household_income) + gini_index)
 ```
 
