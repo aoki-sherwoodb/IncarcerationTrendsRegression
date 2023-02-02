@@ -110,25 +110,11 @@ long_acs <- tx_acs_data %>%
                names_to = "race", 
                values_to = "median_household_income", 
                names_prefix = "household_income_") %>%
+  # rename to match races between datasets
   mutate(race = str_replace(race, "_not_hispanic", ""), 
          race = str_replace(race, "hispanic", "latinx"))
 
 # incarceration data:
-
-long_incarc <- tx_incarc %>%
-  rename_with(function (x) {str_replace(x, "_jail", ".jail")}) %>%
-  rename_with(function (x) {str_replace(x, "_pop_15", ".pop_15")}) %>%
-  filter(!(total.jail_pop_rate != 0.0 & aapi.jail_pop_rate == 0.0 & 
-             black.jail_pop_rate == 0.0 & latinx.jail_pop_rate == 0.0 & 
-             native.jail_pop_rate == 0.0 & white.jail_pop_rate == 0.0)) %>%
-  pivot_longer(cols = c("total.jail_pop_rate", "aapi.jail_pop_rate", 
-                        "black.jail_pop_rate", "latinx.jail_pop_rate", 
-                        "native.jail_pop_rate", "white.jail_pop_rate",
-                        "total.pop_15to64", "aapi.pop_15to64", "black.pop_15to64",
-                        "latinx.pop_15to64", "native.pop_15to64", "white.pop_15to64"),
-               names_to = c("race", ".value"), names_sep = "\\.") %>%
-  mutate(race = str_replace(race, "aapi", "asian"),
-         race = str_replace(race, "total", "all"))
 
 long_incarc2 <- tx_incarc2 %>%
   rename_with(function (x) {str_replace(x, "_jail", ".jail")}) %>%
@@ -142,23 +128,13 @@ long_incarc2 <- tx_incarc2 %>%
                         "total.pop_15to64", "aapi.pop_15to64", "black.pop_15to64",
                         "latinx.pop_15to64", "native.pop_15to64", "white.pop_15to64"),
                names_to = c("race", ".value"), names_sep = "\\.") %>%
+  # rename to match races between datasets
   mutate(race = str_replace(race, "aapi", "asian"),
          race = str_replace(race, "total", "all"))
-```
 
-```{r}
-# join incarceration and census data, set 0s in incarceration data to NAs and remove NAs
-joined_data <- left_join(long_acs, long_incarc, by = c("county_name", "race")) %>%
-  drop_na() %>%
-  mutate(urban_category = ifelse(urbanicity == "rural" | urbanicity == "small/mid", "rural", "urban"))
-
+# join datasets, drops NAs:
 joined_data2 <- left_join(long_acs, long_incarc2, by = c("county_name", "race")) %>%
-  drop_na() %>%
-  mutate(urban_category = ifelse(urbanicity == "rural" | urbanicity == "small/mid", "rural", "urban"))
-
-# outlier in median household income is >1 order of magnitude smaller than all other points
-# suspected data entry error
-# joined_data <- filter(joined_data, county_name != "Erath County, Texas" | race != "black")
+  drop_na()
 ```
 
 # EDA
@@ -166,67 +142,64 @@ joined_data2 <- left_join(long_acs, long_incarc2, by = c("county_name", "race"))
 ### controls
 
 ```{r}
-# check relationship of controls (population, urbanicity) with jail rate (including 0s!)
+# check relationship of controls (population, urbanicity) and EVs (median household income, Gini)
+# with jail pop, the RV
+
+# log transformed where necessary to get a linear-looking relationship
 pop <- joined_data2 %>% ggplot(aes(x = log(pop_15to64), y = log1p(jail_pop))) + geom_point()
 urb <- joined_data2 %>% ggplot(aes(x = urbanicity, y = log1p(jail_pop))) + geom_boxplot()
 gini <- joined_data2 %>% ggplot(aes(x = gini_index, y = log1p(jail_pop))) + geom_point()
 inc <- joined_data2 %>% ggplot(aes(x = median_household_income, y = log1p(jail_pop))) + geom_point()
+
 (pop + urb) / (gini + inc)
 ```
 
 ```{r}
+# examine relationship between population for each race in each county and the 
+# population of that race in jail in that county
 joined_data %>%
   filter(race == "all") %>%
-  ggplot(aes(x = log(pop_15to64), y = log1p(jail_pop_rate))) +
+  ggplot(aes(x = log(pop_15to64), y = log1p(jail_pop))) +
     geom_point()
 ```
 
 
-### race and race*income
+### race 
 
 ```{r}
-# clear discrepancies between jail pop rates 
-joined_data %>% 
-  ggplot(aes(x = race, y = log1p(jail_pop_rate))) +
-  geom_boxplot() +
-  facet_grid(cols = vars(urbanicity))
+# clear discrepancies between jail pop rates between races
+joined_data2 %>% 
+  ggplot(aes(x = race, y = log1p(jail_pop) - log(pop_15to64))) +
+  geom_boxplot()
 ```
 
 
 ```{r}
-# see if effect of household_income differs by race
-joined_data %>% 
-  ggplot(aes(x = log(pop_15to64), y = log1p(jail_pop_rate), color = race)) +
+# see if effect of population on jail population differs by race
+joined_data2 %>% 
+  ggplot(aes(x = log(pop_15to64), y = log1p(jail_pop), color = race)) +
     geom_point() +
-    geom_smooth(method = "lm", se = F)
+    geom_smooth(method = "lm", se = F) +
+    labs(x = "log(Population Ages 15-64)", y = "log(Jail Population)", color = "Race", 
+         title = "Interaction between Race and Population of that race on Jail Population of that race in each County in Texas")
 ```
-
-```{r}
-joined_data %>%
-  ggplot(aes(x = log(median_household_income), y = log1p(jail_pop_rate))) +
-  geom_point() +
-  geom_smooth(method = "lm", se = F) +
-  facet_grid(cols = vars(urban_category))
-```
-
 
 # fit model
 
 ```{r}
-null_model <- lm(log1p(jail_pop_rate) ~ race + log(pop_15to64), data = joined_data)
-aug_null <- augment(null_model, newdata = joined_data)
-pop_inc_model <- lm(log1p(jail_pop_rate) ~ race + log(pop_15to64) + log(median_household_income), data = joined_data)
-aug_pop_inc <- augment(pop_inc_model, newdata = joined_data)
-full_model <- lm(log1p(jail_pop_rate) ~ log(pop_15to64) + log(median_household_income) + urbanicity + race, data = joined_data)
-aug_full <- augment(full_model, newdata = joined_data)
-```
-
-```{r}
+#null: just race and log(population)
 null_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + race, data = joined_data2)
+
+#urb: add urbanicity
 urb_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + race + urbanicity, data = joined_data2)
+
+#inc: add income
 inc_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + race + median_household_income, data = joined_data2)
+
+#full: null with median household income and urbanicity added
 full_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income + urbanicity + race, data = joined_data2)
 
+# exploring possible interactions
 interaction_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income*urbanicity + race, data = joined_data2)
 interaction_model2 <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income + race*urbanicity, data = joined_data2)
 
@@ -237,6 +210,7 @@ aug_full <- augment(full_model, newdata = joined_data2)
 
 
 ```{r}
+# check model assumptions
 library(ggResidpanel)
 ggplot(aug_null, aes(x = log(pop_15to64), y = .resid)) + geom_point()
 ggplot(aug_null, aes(x = median_household_income, y = .resid)) + geom_point()
@@ -258,11 +232,5 @@ anova(full_model, interaction_model2)
 summary(null_model)
 summary(urb_model)
 summary(full_model)
-```
-
-```{r}
-joined_data %>%
-  filter(race == "native" & jail_pop_rate == 0.0) %>%
-  count()
 ```
 
