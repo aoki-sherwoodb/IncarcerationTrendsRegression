@@ -232,12 +232,14 @@ anova(interaction_model2, final_model)
 #final model assumptions
 
 library(ggResidpanel)
-pop_resids <- ggplot(aug_final, aes(x = log(pop_15to64), y = .resid)) + geom_point() + labs(x = "log(Population)", y = "Residuals", title = "tbd")
-urb_resids <- ggplot(aug_final, aes(x = urbanicity, y = .resid)) + geom_boxplot() + labs(x = "Urbanicity", y = "Residuals", title = "tbd")
-race_resids <- ggplot(aug_final, aes(x = race, y = .resid)) + geom_boxplot() + labs(x = "Race", y = "Residuals", title = "tbd")
-pop_resids / (urb_resids + race_resids)
-resid_xpanel(final_model)
-resid_panel(final_model, plots = c("qq", "resid"))
+pop_resids <- ggplot(aug_final, aes(x = log(pop_15to64), y = .resid)) + geom_point() + labs(x = "log(Population)", y = "Residuals")
+urb_resids <- ggplot(aug_final, aes(x = urbanicity, y = .resid)) + geom_boxplot() + labs(x = "Urbanicity", y = "Residuals")
+race_resids <- ggplot(aug_final, aes(x = race, y = .resid)) + geom_boxplot() + labs(x = "Race", y = "Residuals")
+final_qq <- resid_panel(final_model, plots = c("qq"))
+assumptions <- (urb_resids + race_resids) / (final_qq + pop_resids) + plot_annotation(title = "Checking Model Assumptions", theme = theme(plot.title = element_text(size =20, color = "purple")))
+assumptions
+#resid_xpanel(final_model)
+#resid_panel(final_model, plots = c("qq", "resid"))
 
 ```
 
@@ -253,4 +255,5 @@ summary(urb_model)
 summary(full_model)
 summary(final_model)
 ```
+
 
