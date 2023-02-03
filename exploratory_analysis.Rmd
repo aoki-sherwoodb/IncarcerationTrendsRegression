@@ -18,7 +18,7 @@ library(tidyverse)
 library(maditr)
 library(patchwork)
 library(broom)
-library(ggResidpanel)
+#library(ggResidpanel)
 ```
 
 # Load and clean data
@@ -206,7 +206,7 @@ final_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + race*urbanicity, data = jo
 
 aug_null <- augment(null_model, newdata = joined_data2)
 aug_full <- augment(full_model, newdata = joined_data2)
-aug_final < augment(final_model, newdata = joined_data2)
+aug_final <- augment(final_model, newdata = joined_data2)
 ```
 
 
@@ -219,19 +219,38 @@ ggplot(aug_null, aes(x = race, y = .resid)) + geom_boxplot()
 resid_xpanel(null_model)
 resid_panel(null_model, plots = c("qq", "resid"))
 ```
-
 ```{r}
 anova(null_model, urb_model)
 anova(null_model, inc_model)
 anova(urb_model, full_model)
 anova(null_model, full_model)
 anova(full_model, interaction_model2)
+anova(interaction_model2, final_model)
 ```
 
+```{r}
+#final model assumptions
+
+library(ggResidpanel)
+pop_resids <- ggplot(aug_final, aes(x = log(pop_15to64), y = .resid)) + geom_point() + labs(x = "log(Population)", y = "Residuals", title = "tbd")
+urb_resids <- ggplot(aug_final, aes(x = urbanicity, y = .resid)) + geom_boxplot() + labs(x = "Urbanicity", y = "Residuals", title = "tbd")
+race_resids <- ggplot(aug_final, aes(x = race, y = .resid)) + geom_boxplot() + labs(x = "Race", y = "Residuals", title = "tbd")
+pop_resids / (urb_resids + race_resids)
+resid_xpanel(final_model)
+resid_panel(final_model, plots = c("qq", "resid"))
+
+```
+
+```{r}
+#final model
+ggplot(aug_final, aes(x = log(pop_15to64), y = .fitted)) + geom_point()
+
+```
 
 ```{r}
 summary(null_model)
 summary(urb_model)
 summary(full_model)
+summary(final_model)
 ```
 
