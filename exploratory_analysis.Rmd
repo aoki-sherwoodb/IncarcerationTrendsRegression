@@ -154,7 +154,7 @@ inc <- joined_data2 %>% ggplot(aes(x = median_household_income, y = log1p(jail_p
 (pop + urb) / (gini + inc)
 ```
 
-```{r}
+```{r, eval = FALSE}
 # examine relationship between population for each race in each county and the 
 # population of that race in jail in that county
 joined_data %>%
@@ -202,10 +202,11 @@ full_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income + u
 # exploring possible interactions
 interaction_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income*urbanicity + race, data = joined_data2)
 interaction_model2 <- lm(log1p(jail_pop) ~ log(pop_15to64) + median_household_income + race*urbanicity, data = joined_data2)
+final_model <- lm(log1p(jail_pop) ~ log(pop_15to64) + race*urbanicity, data = joined_data2)
 
 aug_null <- augment(null_model, newdata = joined_data2)
-aug_pop_inc <- augment(pop_inc_model, newdata = joined_data2)
 aug_full <- augment(full_model, newdata = joined_data2)
+aug_final < augment(final_model, newdata = joined_data2)
 ```
 
 
